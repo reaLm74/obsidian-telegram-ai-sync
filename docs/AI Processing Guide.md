@@ -8,6 +8,7 @@ Telegram AI Sync supports automatic processing of messages through various AI pr
 
 - **Multiple AI Providers**: OpenAI (GPT-4), Anthropic Claude, Google Gemini
 - **Smart Content Analysis**: Automatic processing of text, images, videos, audio, and documents
+- **URL-Only Skip**: Messages containing only links (Instagram, YouTube, etc.) skip AI processing
 - **Vision API Support**: Advanced image analysis capabilities (OpenAI, Gemini)
 - **Hierarchical Prompts**: Content-specific prompts + general formatting prompts
 - **Custom AI Parameters**: Create dynamic variables like `{{ai:title}}` for intelligent file naming
@@ -19,6 +20,7 @@ Telegram AI Sync supports automatic processing of messages through various AI pr
 
 ### 1. Text Messages
 - **Processing**: Analyzes and structures text content
+- **URL-Only Exception**: Messages containing only links (e.g. Instagram, YouTube) skip AI processing
 - **Use Cases**: Meeting notes, ideas, thoughts, plans
 - **Example Prompt**: "Structure this text into clear sections with bullet points and key takeaways"
 
@@ -147,6 +149,7 @@ The plugin automatically processes supported document formats locally to reduce 
 - **Benefits**: Faster processing, reduced API costs, improved privacy
 
 ### AI Call Optimization
+- **URL-Only Skip**: Link-only messages (Instagram, YouTube, etc.) use default category without AI
 - **Hierarchical Prompts**: Combines content-specific and general prompts in single requests
 - **Intelligent Batching**: Groups related content for efficient processing
 - **Conditional Processing**: Only processes content types that are enabled
@@ -157,16 +160,19 @@ The plugin automatically processes supported document formats locally to reduce 
 ```
 1. Message Received → Content Type Detection
 2. Check if AI processing is enabled for this type
-3. Local Processing (if supported format)
+3. URL-Only Check (text messages)
+   ├─ If message contains only link(s) → Skip AI, use default category
+   └─ Otherwise → Continue to step 4
+4. Local Processing (if supported format)
    ├─ Extract text locally (documents)
    └─ Skip AI for extraction step
-4. AI Analysis
+5. AI Analysis
    ├─ Apply content-specific prompt
    ├─ Combine with general formatting prompt
    └─ Send single optimized request
-5. Generate AI Parameters (if used in templates)
-6. Apply Templates and Create Note
-7. Save to Obsidian Vault
+6. Generate AI Parameters (if used in templates)
+7. Apply Templates and Create Note
+8. Save to Obsidian Vault
 ```
 
 ## Best Practices
