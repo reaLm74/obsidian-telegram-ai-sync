@@ -21,7 +21,7 @@ import {
 	processBasicVariables,
 } from "./processors";
 import { ProgressBarType, _3MB, createProgressBar, deleteProgressBar, updateProgressBar } from "../progressBar";
-import { getFileObject } from "./getters";
+import { getFileObject, isTextOnlyUrl } from "./getters";
 import { TFile } from "obsidian";
 import { enqueue } from "src/utils/queues";
 import { _15sec, _1sec, displayAndLog, displayAndLogError } from "src/utils/logUtils";
@@ -199,8 +199,11 @@ export async function handleMessageText(
 ) {
 	let formattedContent = await applyNoteContentTemplate(plugin, distributionRule.templateFilePath, msg);
 
-	// AI processing for text messages
-	if (plugin.settings.aiEnabled) {
+	// Check if message contains only URL(s) - skip AI processing in this case
+	const isOnlyUrl = isTextOnlyUrl(msg);
+
+	// AI processing for text messages (skip if message contains only URLs)
+	if (plugin.settings.aiEnabled && !isOnlyUrl) {
 		const contentType = getMessageContentType(msg);
 
 		displayAndLog(plugin, `Processing message with AI (type: ${contentType})...`, 0);
@@ -211,6 +214,8 @@ export async function handleMessageText(
 			formattedContent = aiProcessedContent;
 			displayAndLog(plugin, "Message successfully processed by AI", 0);
 		}
+	} else if (isOnlyUrl) {
+		displayAndLog(plugin, "Message contains only URL(s), skipping AI processing", 0);
 	}
 
 	let notePath = await applyNotePathTemplate(plugin, distributionRule.notePathTemplate, msg);
@@ -482,7 +487,14 @@ async function applyCategorization(
 
 		// If no forced category, determine automatically
 		if (!category) {
-			category = await plugin.categoryManager.categorizeContent(content, msg);
+			// For messages containing only URL(s), use default category directly
+			const isOnlyUrl = isTextOnlyUrl(msg);
+			if (isOnlyUrl && plugin.settings.defaultCategoryId) {
+				category = plugin.categoryManager.getCategory(plugin.settings.defaultCategoryId) || null;
+				displayAndLog(plugin, "Using default category for URL-only message", 0);
+			} else {
+				category = await plugin.categoryManager.categorizeContent(content, msg);
+			}
 		}
 
 		if (!category) {

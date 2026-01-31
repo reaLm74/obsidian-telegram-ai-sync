@@ -198,3 +198,28 @@ export function getFileObject(msg: TelegramBot.Message): { fileType: string; fil
 	}
 	return { fileType: "undefined", fileObject: undefined };
 }
+
+/**
+ * Checks if message text contains only URL(s) without other meaningful content
+ * Returns true if text contains only URLs and whitespace/punctuation
+ */
+export function isTextOnlyUrl(msg: TelegramBot.Message): boolean {
+	const text = msg.text?.trim();
+	if (!text) return false;
+
+	const linkify = LinkifyIt();
+	const matches = linkify.match(text);
+
+	if (!matches || matches.length === 0) return false;
+
+	// Remove all found URLs from text
+	let textWithoutUrls = text;
+	matches.forEach((match) => {
+		textWithoutUrls = textWithoutUrls.replace(match.raw, "");
+	});
+
+	// Check if remaining text contains only whitespace and punctuation
+	const remainingText = textWithoutUrls.trim().replace(/[\s\p{P}\p{S}]/gu, ""); // Remove whitespace, punctuation, symbols
+
+	return remainingText.length === 0;
+}
