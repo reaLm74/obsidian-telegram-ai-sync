@@ -1,19 +1,30 @@
-# vscode
-.vscode
+# IDE & Editors
+.vscode/
+.idea/
+.cursor/
+*.swp
+*.iml
 
-# npm
-node_modules
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Don't include the compiled main.js file in the repo.
-# They should be uploaded to GitHub releases instead.
+# Build and Dependencies
+node_modules/
+dist/
+build/
+
+# Compiled Plugin files
 main.js
-
-# Exclude sourcemaps
+main.css
 *.map
 
-# obsidian
+# Development/Local files
 data.json
+.devcontainer/
+.env
+*.log
 
-# Exclude macOS Finder (System Explorer) View States
-.DS_Store
-.devcontainer/devcontainer.json
+# Obsidian specific
+.obsidian/

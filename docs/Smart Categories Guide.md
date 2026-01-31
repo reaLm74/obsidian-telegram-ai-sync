@@ -10,6 +10,7 @@ The plugin automatically analyzes incoming messages and assigns them to categori
 1. **Keyword Matching**: Predefined keywords in message content
 2. **AI Classification**: Intelligent content analysis (when enabled)
 3. **Manual Rules**: Custom distribution rules for specific scenarios
+4. **URL-Only Messages**: Text containing only links (Instagram, YouTube, etc.) use default category
 
 ## Default Categories
 
@@ -181,6 +182,9 @@ Set up rules for when categories should or shouldn't apply:
 - Sender restrictions
 - Time-based rules
 - Content type filters
+
+### URL-Only Messages
+Messages containing only links (no other text) automatically use the default category without AI classification. This saves API costs when sharing Instagram, YouTube, or other links.
 
 ## Best Practices
 
