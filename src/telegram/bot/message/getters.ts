@@ -209,18 +209,17 @@ export function isTextOnlyUrl(msg: TelegramBot.Message): boolean {
 
 	const linkify = LinkifyIt();
 	const matches = linkify.match(text);
-	
+
 	if (!matches || matches.length === 0) return false;
 
 	// Remove all found URLs from text
 	let textWithoutUrls = text;
-	matches.forEach(match => {
-		textWithoutUrls = textWithoutUrls.replace(match.raw, '');
+	matches.forEach((match) => {
+		textWithoutUrls = textWithoutUrls.replace(match.raw, "");
 	});
 
 	// Check if remaining text contains only whitespace and punctuation
-	const remainingText = textWithoutUrls.trim()
-		.replace(/[\s\p{P}\p{S}]/gu, ''); // Remove whitespace, punctuation, symbols
-	
+	const remainingText = textWithoutUrls.trim().replace(/[\s\p{P}\p{S}]/gu, ""); // Remove whitespace, punctuation, symbols
+
 	return remainingText.length === 0;
 }

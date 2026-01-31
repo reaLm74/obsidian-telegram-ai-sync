@@ -201,7 +201,7 @@ export async function handleMessageText(
 
 	// Check if message contains only URL(s) - skip AI processing in this case
 	const isOnlyUrl = isTextOnlyUrl(msg);
-	
+
 	// AI processing for text messages (skip if message contains only URLs)
 	if (plugin.settings.aiEnabled && !isOnlyUrl) {
 		const contentType = getMessageContentType(msg);
