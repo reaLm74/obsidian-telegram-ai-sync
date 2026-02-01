@@ -105,6 +105,8 @@ export interface TelegramSyncSettings {
 	noteCategories: NoteCategory[];
 	categorizationRules: CategorizationRule[];
 	defaultCategoryId?: string;
+	linksCategoryEnabled: boolean;
+	linksCategoryFolder: string;
 	aiCategorizationEnabled: boolean;
 	categoryTagsEnabled: boolean;
 	categoryFoldersEnabled: boolean;
@@ -173,6 +175,8 @@ export const DEFAULT_SETTINGS: TelegramSyncSettings = {
 	noteCategories: [],
 	categorizationRules: [],
 	defaultCategoryId: undefined,
+	linksCategoryEnabled: false,
+	linksCategoryFolder: "Links",
 	aiCategorizationEnabled: false,
 	categoryTagsEnabled: true,
 	categoryFoldersEnabled: true,
@@ -610,6 +614,36 @@ export class TelegramSyncSettingTab extends PluginSettingTab {
 					this.display(); // Redraw settings
 				}),
 			);
+
+		// Links category (URL-only messages, works independently)
+		new Setting(this.containerEl)
+			.setName("Links category")
+			.setDesc(
+				"Store URL-only messages in domain files (e.g. Links/github.md). " +
+					"Replaces default category for links.",
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.linksCategoryEnabled).onChange(async (value) => {
+					this.plugin.settings.linksCategoryEnabled = value;
+					await this.plugin.saveSettings();
+					this.display();
+				}),
+			);
+
+		if (this.plugin.settings.linksCategoryEnabled) {
+			new Setting(this.containerEl)
+				.setName("Links folder")
+				.setDesc("Base folder for links (path: folder/domain.md)")
+				.addText((text) =>
+					text
+						.setPlaceholder("Links")
+						.setValue(this.plugin.settings.linksCategoryFolder)
+						.onChange(async (value) => {
+							this.plugin.settings.linksCategoryFolder = value.trim() || "Links";
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
 
 		if (!this.plugin.settings.categoriesEnabled) {
 			return;

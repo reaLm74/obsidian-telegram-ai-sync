@@ -1,12 +1,12 @@
 import { compareVersions } from "compare-versions";
 
-export const releaseVersion = "0.1.1";
+export const releaseVersion = "0.1.2";
 export const showNewFeatures = true;
 export let showBreakingChanges = false; // No breaking changes for initial release
 
 const newFeatures = `🎉 Initial release of Telegram AI Sync with advanced AI-powered processing, smart categorization, media group support, and local document extraction!`;
 
-export const breakingChanges = ``; // No breaking changes for v0.1.1
+export const breakingChanges = ``; // No breaking changes for v0.1.2
 
 export const telegramChannelLink = "https://t.me/realm74"; // Your personal Telegram
 export const insiderFeaturesLink = "https://github.com/reaLm74/obsidian-telegram-ai-sync";

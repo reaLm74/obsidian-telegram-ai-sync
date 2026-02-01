@@ -110,12 +110,45 @@ export function getChatLink(msg: TelegramBot.Message, botUser?: TelegramBot.User
 }
 
 export function getUrl(msg: TelegramBot.Message, num = 1, lookInCaptions = true): string {
+	const urls = getUrls(msg, lookInCaptions);
+	return urls[num - 1] ?? "";
+}
+
+/**
+ * Returns all URLs from message (linkify-it + entities fallback for text_link)
+ */
+export function getUrls(msg: TelegramBot.Message, lookInCaptions = true): string[] {
 	const text = (msg.text || "") + (lookInCaptions && msg.caption ? msg.caption : "");
-	if (!text) return "";
+	if (!text) return [];
 
 	const linkify = LinkifyIt();
 	const matches = linkify.match(text);
-	return matches ? matches[num - 1].url : "";
+	if (matches && matches.length > 0) {
+		return matches.map((m) => m.url);
+	}
+
+	// Fallback: Telegram entities (url/text_link)
+	const entities = msg.entities || msg.caption_entities || [];
+	const urlEntities = entities.filter((e) => e.type === "url" || e.type === "text_link");
+	return urlEntities.map((e) => {
+		if (e.type === "text_link" && e.url) return e.url;
+		return text.slice(e.offset, e.offset + e.length);
+	});
+}
+
+/**
+ * Extracts short domain name from URL for use in paths (e.g. github.com -> github)
+ */
+export function getDomainFromUrl(url: string): string {
+	if (!url || !url.trim()) return "";
+	try {
+		const parsed = new URL(url.startsWith("//") ? `https:${url}` : url);
+		const host = parsed.hostname.replace(/^www\./i, "");
+		const parts = host.split(".");
+		return parts.length >= 2 ? parts[parts.length - 2] : host;
+	} catch {
+		return "";
+	}
 }
 
 export function getHashtag(msg: TelegramBot.Message, num = 1, lookInCaptions = true): string {
@@ -204,22 +237,35 @@ export function getFileObject(msg: TelegramBot.Message): { fileType: string; fil
  * Returns true if text contains only URLs and whitespace/punctuation
  */
 export function isTextOnlyUrl(msg: TelegramBot.Message): boolean {
-	const text = msg.text?.trim();
+	const text = (msg.text || msg.caption || "").trim();
 	if (!text) return false;
 
 	const linkify = LinkifyIt();
 	const matches = linkify.match(text);
 
-	if (!matches || matches.length === 0) return false;
+	if (matches && matches.length > 0) {
+		let textWithoutUrls = text;
+		matches.forEach((match) => {
+			textWithoutUrls = textWithoutUrls.replace(match.raw, "");
+		});
+		const remainingText = textWithoutUrls.trim().replace(/[\s\p{P}\p{S}]/gu, "");
+		if (remainingText.length === 0) return true;
+	}
 
-	// Remove all found URLs from text
-	let textWithoutUrls = text;
-	matches.forEach((match) => {
-		textWithoutUrls = textWithoutUrls.replace(match.raw, "");
-	});
+	// Fallback: Telegram entities (url/text_link) when linkify-it fails
+	const entities = msg.entities || msg.caption_entities || [];
+	const urlEntities = entities.filter((e) => e.type === "url" || e.type === "text_link");
+	if (urlEntities.length > 0) {
+		const sorted = [...urlEntities].sort((a, b) => a.offset - b.offset);
+		let nonUrlParts = text.slice(0, sorted[0].offset);
+		for (let i = 0; i < sorted.length; i++) {
+			const end = sorted[i].offset + sorted[i].length;
+			const nextStart = sorted[i + 1]?.offset ?? text.length;
+			nonUrlParts += text.slice(end, nextStart);
+		}
+		const remainingText = nonUrlParts.trim().replace(/[\s\p{P}\p{S}]/gu, "");
+		return remainingText.length === 0;
+	}
 
-	// Check if remaining text contains only whitespace and punctuation
-	const remainingText = textWithoutUrls.trim().replace(/[\s\p{P}\p{S}]/gu, ""); // Remove whitespace, punctuation, symbols
-
-	return remainingText.length === 0;
+	return false;
 }

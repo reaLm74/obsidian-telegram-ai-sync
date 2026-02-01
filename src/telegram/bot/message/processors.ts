@@ -4,6 +4,7 @@ import {
 	getChatId,
 	getChatLink,
 	getChatName,
+	getDomainFromUrl,
 	getForwardFromLink,
 	getForwardFromName,
 	getHashtag,
@@ -95,6 +96,7 @@ export async function applyNoteContentTemplate(
 	templateFilePath: string,
 	msg: TelegramBot.Message,
 	filesLinks: string[] = [],
+	skipAIVariables = false,
 ): Promise<string> {
 	let templateContent = "";
 	try {
@@ -133,7 +135,7 @@ export async function applyNoteContentTemplate(
 	const itemsForReplacing: [string, string][] = [];
 
 	let processedContent = (
-		await processBasicVariables(plugin, msg, templateContent, textContentMd, fullContent, false)
+		await processBasicVariables(plugin, msg, templateContent, textContentMd, fullContent, false, skipAIVariables)
 	)
 		.replace(/{{files}}/g, allEmbeddedFilesLinks)
 		.replace(/{{files:links}}/g, allFilesLinks)
@@ -171,13 +173,22 @@ export async function applyNotePathTemplate(
 	plugin: TelegramSyncPlugin,
 	notePathTemplate: string,
 	msg: TelegramBot.Message,
+	skipAIVariables = false,
 ): Promise<string> {
 	if (!notePathTemplate) return "";
 
 	let processedPath = notePathTemplate.endsWith("/") ? notePathTemplate + defaultNoteNameTemplate : notePathTemplate;
 	let textContentMd = "";
 	if (processedPath.includes("{{content")) textContentMd = msg.text || msg.caption || "";
-	processedPath = await processBasicVariables(plugin, msg, processedPath, textContentMd);
+	processedPath = await processBasicVariables(
+		plugin,
+		msg,
+		processedPath,
+		textContentMd,
+		undefined,
+		true,
+		skipAIVariables,
+	);
 	if (processedPath.endsWith("/.md")) processedPath = processedPath.replace("/.md", "/_.md");
 	if (!path.extname(processedPath)) processedPath = processedPath + ".md";
 	if (processedPath.endsWith(".")) processedPath = processedPath + "md";
@@ -213,6 +224,7 @@ export async function processBasicVariables(
 	messageText?: string,
 	messageContent?: string,
 	isPath = true,
+	skipAIVariables = false,
 ): Promise<string> {
 	const dateTimeNow = new Date();
 	const messageDateTime = unixTime2Date(msg.date, msg.message_id);
@@ -267,6 +279,7 @@ export async function processBasicVariables(
 		.replace(/{{topicId}}/g, getTopicId(msg)?.toString() || "") // head message id representing the topic
 		.replace(/{{messageId}}/g, msg.message_id.toString())
 		.replace(/{{replyMessageId}}/g, getReplyMessageId(msg))
+		.replace(/{{domain}}/g, prepareIfPath(isPath, getDomainFromUrl(getUrl(msg))))
 		.replace(/{{hashtag:\[(\d+)\]}}/g, (_, num) => getHashtag(msg, num))
 		.replace(/{{creationDate:(.*?)}}/g, (_, format) => formatDateTime(creationDateTime, format)) // date, when the message was created
 		.replace(/{{creationTime:(.*?)}}/g, (_, format) => formatDateTime(creationDateTime, format)); // time, when the message was created
@@ -274,7 +287,13 @@ export async function processBasicVariables(
 	// Process AI parameters if they exist in template
 	if (processedContent.includes("{{ai:")) {
 		console.log("Processing AI variables in template:", processedContent);
-		processedContent = await processAIVariables(plugin, msg, processedContent, messageContent || messageText || "");
+		processedContent = await processAIVariables(
+			plugin,
+			msg,
+			processedContent,
+			messageContent || messageText || "",
+			skipAIVariables,
+		);
 		console.log("AI variables processed result:", processedContent);
 	}
 
@@ -293,11 +312,17 @@ async function processAIVariables(
 	msg: TelegramBot.Message,
 	template: string,
 	content: string,
+	skipAIVariables = false,
 ): Promise<string> {
-	console.log("processAIVariables called with:", { template, content, aiEnabled: plugin.settings.aiEnabled });
+	console.log("processAIVariables called with:", {
+		template,
+		content,
+		aiEnabled: plugin.settings.aiEnabled,
+		skipAIVariables,
+	});
 
-	// If AI is not enabled, replace AI variables with default values
-	if (!plugin.settings.aiEnabled) {
+	// If AI is not enabled or skip requested (e.g. URL-only messages), use fallbacks
+	if (!plugin.settings.aiEnabled || skipAIVariables) {
 		console.log("AI disabled, using fallback values");
 		return template.replace(/\{\{ai:(\w+)\}\}/g, (match, paramName) => {
 			const fallbackValue = getFallbackValue(paramName, content);
