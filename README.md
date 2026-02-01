@@ -44,7 +44,7 @@ You can define specific behavior for different content types:
 * **Custom Parameters**: Create variables like `{{ai:tags}}` for metadata.
 
 ## 🎛️ Settings Overview
-
+ 
 ### Telegram Connection
 - **Bot Token**: Your Telegram bot token
 - **Allowed Chats**: Whitelist of authorized users
