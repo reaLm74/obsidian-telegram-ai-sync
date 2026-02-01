@@ -21,7 +21,7 @@ import {
 	processBasicVariables,
 } from "./processors";
 import { ProgressBarType, _3MB, createProgressBar, deleteProgressBar, updateProgressBar } from "../progressBar";
-import { getFileObject, isTextOnlyUrl } from "./getters";
+import { getDomainFromUrl, getFileObject, getUrls, isTextOnlyUrl } from "./getters";
 import { TFile } from "obsidian";
 import { enqueue } from "src/utils/queues";
 import { _15sec, _1sec, displayAndLog, displayAndLogError } from "src/utils/logUtils";
@@ -197,10 +197,42 @@ export async function handleMessageText(
 	msg: TelegramBot.Message,
 	distributionRule: MessageDistributionRule,
 ) {
-	let formattedContent = await applyNoteContentTemplate(plugin, distributionRule.templateFilePath, msg);
-
 	// Check if message contains only URL(s) - skip AI processing in this case
 	const isOnlyUrl = isTextOnlyUrl(msg);
+
+	// Links category: one note per domain, append links to Notes.md
+	if (isOnlyUrl && plugin.settings.linksCategoryEnabled) {
+		const urls = getUrls(msg);
+		const validLinks = urls
+			.map((url) => ({ url, domain: getDomainFromUrl(url) }))
+			.filter(({ url, domain }) => domain && url);
+		if (validLinks.length > 0) {
+			const baseFolder = plugin.settings.linksCategoryFolder.trim() || "Links";
+			const delimiter = plugin.settings.defaultMessageDelimiter ? defaultDelimiter : "\n\n";
+			for (const { url, domain } of validLinks) {
+				const notePath = `${baseFolder}/${sanitizeFilePath(domain)}.md`;
+				const noteFile = plugin.app.vault.getAbstractFileByPath(notePath);
+				const linkItem = `- [${domain}](${url})`;
+				const linkContent = noteFile instanceof TFile ? linkItem : linkItem;
+				const linkDelimiter = noteFile instanceof TFile ? delimiter : "";
+
+				createFolderIfNotExist(plugin.app.vault, path.dirname(notePath));
+
+				await enqueue(appendContentToNote, plugin.app.vault, notePath, linkContent, "", linkDelimiter, false);
+				displayAndLog(plugin, `Link saved to ${notePath}`, 0);
+			}
+			await finalizeMessageProcessing(plugin, msg);
+			return;
+		}
+	}
+
+	let formattedContent = await applyNoteContentTemplate(
+		plugin,
+		distributionRule.templateFilePath,
+		msg,
+		[],
+		isOnlyUrl,
+	);
 
 	// AI processing for text messages (skip if message contains only URLs)
 	if (plugin.settings.aiEnabled && !isOnlyUrl) {
@@ -218,7 +250,7 @@ export async function handleMessageText(
 		displayAndLog(plugin, "Message contains only URL(s), skipping AI processing", 0);
 	}
 
-	let notePath = await applyNotePathTemplate(plugin, distributionRule.notePathTemplate, msg);
+	let notePath = await applyNotePathTemplate(plugin, distributionRule.notePathTemplate, msg, isOnlyUrl);
 
 	// Apply categorization
 	const categorization = await applyCategorization(plugin, formattedContent, msg, notePath, distributionRule);
@@ -513,7 +545,14 @@ async function applyCategorization(
 			category.notePathTemplate &&
 			!distributionRule?.overrideCategoryFolders
 		) {
-			finalNotePath = await applyCategoryNotePathTemplate(plugin, category.notePathTemplate, category, msg);
+			const isOnlyUrl = isTextOnlyUrl(msg);
+			finalNotePath = await applyCategoryNotePathTemplate(
+				plugin,
+				category.notePathTemplate,
+				category,
+				msg,
+				isOnlyUrl,
+			);
 
 			// Create folder if it doesn't exist
 			const folderPath = path.dirname(finalNotePath);
@@ -558,6 +597,7 @@ async function applyCategoryNotePathTemplate(
 	notePathTemplate: string,
 	category: NoteCategory,
 	msg: TelegramBot.Message,
+	skipAIVariables = false,
 ): Promise<string> {
 	let notePath = notePathTemplate;
 
@@ -589,7 +629,7 @@ async function applyCategoryNotePathTemplate(
 	// Process basic variables (including content and AI)
 	const textContentMd = msg.text || msg.caption || "";
 	console.log("applyCategoryNotePathTemplate processing:", { notePath, textContentMd });
-	notePath = await processBasicVariables(plugin, msg, notePath, textContentMd, textContentMd);
+	notePath = await processBasicVariables(plugin, msg, notePath, textContentMd, textContentMd, true, skipAIVariables);
 
 	// Ensure .md extension is present
 	if (!path.extname(notePath)) notePath = notePath + ".md";
