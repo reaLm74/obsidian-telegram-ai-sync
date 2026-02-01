@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Messages containing only links (Instagram, YouTube, etc.) automatically use the default category without AI classification. This saves API costs when sharing Instagram, YouTube, or other links.
 
+## [0.2.0](https://github.com/reaLm74/obsidian-telegram-ai-sync/compare/0.1.1...0.2.0) (2026-02-01)
+
+
+### Features
+
+* skip AI for URL-only messages, add Links category ([e2b3669](https://github.com/reaLm74/obsidian-telegram-ai-sync/commit/e2b3669814f8781d59c3120a1889b2051812efed))
+
 ## [0.1.0] - 2026-01-25
 
 ### 🎉 Initial Release
