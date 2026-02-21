@@ -96,6 +96,7 @@ export async function applyNoteContentTemplate(
 	templateFilePath: string,
 	msg: TelegramBot.Message,
 	filesLinks: string[] = [],
+	textContentOverride?: string,
 	skipAIVariables = false,
 ): Promise<string> {
 	let templateContent = "";
@@ -110,8 +111,8 @@ export async function applyNoteContentTemplate(
 
 	const allEmbeddedFilesLinks = filesLinks.length > 0 ? filesLinks.join("\n") : "";
 	const allFilesLinks = allEmbeddedFilesLinks.replace("![", "[");
-	let textContentMd = "";
-	if (!templateContent || templateContent.includes("{{content")) {
+	let textContentMd = textContentOverride || "";
+	if (!textContentMd && (!templateContent || templateContent.includes("{{content"))) {
 		// For images with enabled Vision API use AI processing
 		if (msg.photo && plugin.settings.aiEnabled && plugin.settings.aiVisionEnabled) {
 			const { processWithAI } = await import("../../../ai/processor");
@@ -174,12 +175,16 @@ export async function applyNotePathTemplate(
 	notePathTemplate: string,
 	msg: TelegramBot.Message,
 	skipAIVariables = false,
+	extractedFileContent?: string,
 ): Promise<string> {
 	if (!notePathTemplate) return "";
 
 	let processedPath = notePathTemplate.endsWith("/") ? notePathTemplate + defaultNoteNameTemplate : notePathTemplate;
 	let textContentMd = "";
-	if (processedPath.includes("{{content")) textContentMd = msg.text || msg.caption || "";
+	if (processedPath.includes("{{content")) {
+		// Use extracted file content if available, otherwise fall back to message text/caption
+		textContentMd = extractedFileContent || msg.text || msg.caption || "";
+	}
 	processedPath = await processBasicVariables(
 		plugin,
 		msg,

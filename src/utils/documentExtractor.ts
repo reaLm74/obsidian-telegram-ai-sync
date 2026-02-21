@@ -55,6 +55,9 @@ export function canExtractTextLocally(fileName: string, mimeType?: string): bool
 		"go",
 		"rs",
 		"swift",
+		// Added formats
+		"pdf",
+		"docx",
 	];
 
 	// Check by extension
@@ -73,6 +76,8 @@ export function canExtractTextLocally(fileName: string, mimeType?: string): bool
 			"application/json",
 			"application/xml",
 			"application/csv",
+			"application/pdf",
+			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 		];
 
 		if (textMimeTypes.some((type) => mimeType.includes(type))) {
@@ -94,6 +99,47 @@ export async function extractTextFromDocument(
 	const extension = getFileExtension(fileName).toLowerCase();
 
 	try {
+		// Handle PDF
+		if (extension === "pdf") {
+			try {
+				// eslint-disable-next-line @typescript-eslint/no-var-requires
+				const pdf = require("pdf-parse");
+				const data = await pdf(Buffer.from(fileBuffer));
+				return {
+					text: data.text,
+					success: true,
+					metadata: {
+						pages: data.numpages,
+						wordCount: data.text.split(/\s+/).length,
+						format: "pdf",
+					},
+				};
+			} catch (e) {
+				console.error("PDF extraction error:", e);
+				return { text: "", success: false, error: "Failed to parse PDF" };
+			}
+		}
+
+		// Handle DOCX
+		if (extension === "docx") {
+			try {
+				// eslint-disable-next-line @typescript-eslint/no-var-requires
+				const mammoth = require("mammoth");
+				const result = await mammoth.extractRawText({ buffer: Buffer.from(fileBuffer) });
+				return {
+					text: result.value,
+					success: true,
+					metadata: {
+						wordCount: result.value.split(/\s+/).length,
+						format: "docx",
+					},
+				};
+			} catch (e) {
+				console.error("DOCX extraction error:", e);
+				return { text: "", success: false, error: "Failed to parse DOCX" };
+			}
+		}
+
 		// Convert Uint8Array to string for text files
 		const textContent = new TextDecoder("utf-8").decode(fileBuffer);
 
@@ -101,7 +147,7 @@ export async function extractTextFromDocument(
 			case "txt":
 			case "text":
 			case "log":
-				return extractPlainText(textContent);
+				return { text: textContent, success: true, metadata: { format: "text" } };
 
 			case "json":
 				return extractJsonText(textContent);

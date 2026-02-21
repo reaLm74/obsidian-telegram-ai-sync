@@ -85,10 +85,10 @@ export async function handleMessage(plugin: TelegramSyncPlugin, msg: TelegramBot
 		return;
 	}
 	let fileInfo = "binary";
-	if (fileType && fileObject)
-		fileInfo = `${fileType} ${
-			fileObject instanceof Array ? fileObject[0]?.file_unique_id : fileObject.file_unique_id
-		}`;
+	if (fileType && fileObject) {
+		const uniqueId = fileObject instanceof Array ? fileObject[0]?.file_unique_id : fileObject.file_unique_id;
+		fileInfo = `${fileType} ${uniqueId}`;
+	}
 
 	// Skip processing if the message is a "/start" command
 	// Handle media group processing
@@ -231,6 +231,7 @@ export async function handleMessageText(
 		distributionRule.templateFilePath,
 		msg,
 		[],
+		undefined,
 		isOnlyUrl,
 	);
 
@@ -405,11 +406,19 @@ async function createNoteContent(
 		filesLinks.push(`[❌ error while handling file](${error})`);
 	}
 
+	const contentType = getMessageContentType(msg);
+	const messageText = msg.caption || msg.text || "";
+
+	// Attempt to extract text from document if local extraction is enabled
+	let extractedText: string | null = null;
+	if (!error && contentType === "document" && filesPaths.length > 0) {
+		const filePath = filesPaths[0];
+		const fileName = filePath.split("/").pop() || "";
+		extractedText = await tryExtractDocumentText(plugin, filePath, fileName, msg.document?.mime_type);
+	}
+
 	// AI processing for files with captions or voice transcripts
 	if (plugin.settings.aiEnabled && !error) {
-		const contentType = getMessageContentType(msg);
-		const messageText = msg.caption || msg.text || "";
-
 		displayAndLog(plugin, `Processing file content with AI (type: ${contentType})...`, 0);
 
 		let aiProcessedContent: string | null = null;
@@ -419,57 +428,30 @@ async function createNoteContent(
 			displayAndLog(plugin, `Using combined content for media group AI processing`, 0);
 			aiProcessedContent = await processWithAI(plugin, combinedContent, contentType, msg);
 		}
-		// For documents try to extract text locally
-		else if (contentType === "document" && filesPaths.length > 0) {
-			const filePath = filesPaths[0];
-			const fileName = filePath.split("/").pop() || "";
-			const extractedText = await tryExtractDocumentText(plugin, filePath, fileName, msg.document?.mime_type);
+		// For documents use extracted text
+		else if (extractedText) {
+			// Document successfully processed locally - use as text message
+			displayAndLog(plugin, `Document text extracted locally, processing as text`, 0);
 
-			if (extractedText) {
-				// Document successfully processed locally - use as text message
-				displayAndLog(plugin, `Document text extracted locally, processing as text`, 0);
-
-				if (messageText) {
-					// Document + message caption
-					const combinedDocumentContent = `${extractedText}\n\n**Document caption:**\n${messageText}`;
-					aiProcessedContent = await processWithAI(plugin, combinedDocumentContent, "text", msg);
-				} else {
-					// Document only
-					aiProcessedContent = await processWithAI(plugin, extractedText, "text", msg);
-				}
+			if (messageText) {
+				// Document + message caption
+				const combinedDocumentContent = `${extractedText}\n\n**Document caption:**\n${messageText}`;
+				aiProcessedContent = await processWithAI(plugin, combinedDocumentContent, "text", msg);
 			} else {
-				// Failed to extract text - process as regular file
-				displayAndLog(plugin, `Could not extract text locally, processing as regular document`, 0);
-
-				if (messageText) {
-					const fileContent = await applyNoteContentTemplate(
-						plugin,
-						distributionRule.templateFilePath,
-						msg,
-						[],
-					);
-					aiProcessedContent = await processWithAIMixed(plugin, fileContent, contentType, messageText, msg);
-				} else {
-					const fileContent = await applyNoteContentTemplate(
-						plugin,
-						distributionRule.templateFilePath,
-						msg,
-						[],
-					);
-					aiProcessedContent = await processWithAI(plugin, fileContent, contentType, msg);
-				}
+				// Document only
+				aiProcessedContent = await processWithAI(plugin, extractedText, "text", msg);
 			}
 		}
-		// For files with text use mixed processing
-		else if (messageText && filesPaths.length > 0) {
-			displayAndLog(plugin, `Processing mixed content (file + text)`, 0);
-			const fileContent = await applyNoteContentTemplate(plugin, distributionRule.templateFilePath, msg, []);
-			aiProcessedContent = await processWithAIMixed(plugin, fileContent, contentType, messageText, msg);
-		}
-		// For files without text use standard processing
+		// For other files try to process based on type
 		else {
-			const fileContent = await applyNoteContentTemplate(plugin, distributionRule.templateFilePath, msg, []);
-			aiProcessedContent = await processWithAI(plugin, fileContent, contentType, msg);
+			if (messageText && filesPaths.length > 0) {
+				displayAndLog(plugin, `Processing mixed content (file + text)`, 0);
+				const fileContent = await applyNoteContentTemplate(plugin, distributionRule.templateFilePath, msg, []);
+				aiProcessedContent = await processWithAIMixed(plugin, fileContent, contentType, messageText, msg);
+			} else {
+				const fileContent = await applyNoteContentTemplate(plugin, distributionRule.templateFilePath, msg, []);
+				aiProcessedContent = await processWithAI(plugin, fileContent, contentType, msg);
+			}
 		}
 
 		if (aiProcessedContent) {
@@ -483,7 +465,19 @@ async function createNoteContent(
 	}
 
 	// If AI is not used or processing failed, use standard logic
-	const noteContent = await applyNoteContentTemplate(plugin, distributionRule.templateFilePath, msg, filesLinks);
+	// Combine extracted text with message caption if both exist
+	let finalContentOverride = extractedText || undefined;
+	if (extractedText && messageText) {
+		finalContentOverride = `${extractedText}\n\n**Document caption:**\n${messageText}`;
+	}
+
+	const noteContent = await applyNoteContentTemplate(
+		plugin,
+		distributionRule.templateFilePath,
+		msg,
+		filesLinks,
+		finalContentOverride,
+	);
 
 	return noteContent;
 }
@@ -497,6 +491,7 @@ async function applyCategorization(
 	msg: TelegramBot.Message,
 	notePath: string,
 	distributionRule?: MessageDistributionRule,
+	extractedFileContent?: string,
 ): Promise<{
 	finalNotePath: string;
 	finalContent: string;
@@ -552,6 +547,7 @@ async function applyCategorization(
 				category,
 				msg,
 				isOnlyUrl,
+				extractedFileContent,
 			);
 
 			// Create folder if it doesn't exist
@@ -598,6 +594,7 @@ async function applyCategoryNotePathTemplate(
 	category: NoteCategory,
 	msg: TelegramBot.Message,
 	skipAIVariables = false,
+	extractedFileContent?: string,
 ): Promise<string> {
 	let notePath = notePathTemplate;
 
@@ -627,8 +624,13 @@ async function applyCategoryNotePathTemplate(
 	}
 
 	// Process basic variables (including content and AI)
-	const textContentMd = msg.text || msg.caption || "";
-	console.log("applyCategoryNotePathTemplate processing:", { notePath, textContentMd });
+	// Use extracted file content if available for better AI title generation
+	const textContentMd = extractedFileContent || msg.text || msg.caption || "";
+	console.log("applyCategoryNotePathTemplate processing:", {
+		notePath,
+		textContentMd,
+		hasExtractedContent: !!extractedFileContent,
+	});
 	notePath = await processBasicVariables(plugin, msg, notePath, textContentMd, textContentMd, true, skipAIVariables);
 
 	// Ensure .md extension is present
@@ -730,7 +732,7 @@ export async function handleFiles(
 				fileObjectToUse.file_size,
 				plugin.botUser,
 			);
-			fileByteArray = media instanceof Buffer ? media : Buffer.alloc(0);
+			fileByteArray = new Uint8Array(media instanceof Buffer ? media : Buffer.alloc(0));
 			const chatId = msg.chat.id < 0 ? msg.chat.id.toString().slice(4) : msg.chat.id.toString();
 			telegramFileName = telegramFileName || `${fileType}_${chatId}_${msg.message_id}`;
 			error = undefined;
@@ -762,7 +764,7 @@ export async function handleFiles(
 			unixTime2Date(msg.date, msg.message_id),
 			fileExtension,
 		);
-		await plugin.app.vault.createBinary(filePath, fileByteArray);
+		await plugin.app.vault.createBinary(filePath, fileByteArray.buffer as ArrayBuffer);
 	} catch (e) {
 		if (error) (error as Error).message = (error as Error).message + " | " + e;
 		else error = e;
@@ -774,17 +776,17 @@ export async function handleFiles(
 		0,
 	);
 
-	// For media groups always add file, regardless of caption
-	// For single files check caption or template
-	if (msg.media_group_id || msg.caption || distributionRule.templateFilePath) {
+	// Always process files if they were successfully downloaded
+	// This ensures forwarded files without captions are not skipped
+	if (filePath) {
 		displayAndLog(plugin, `📝 CALLING appendFileToNote for file: ${filePath}`, 0);
 		await appendFileToNote(plugin, msg, distributionRule, filePath, error);
+	} else if (msg.media_group_id || msg.caption || distributionRule.templateFilePath) {
+		// Handle edge cases where file download failed but we still need to process
+		displayAndLog(plugin, `📝 CALLING appendFileToNote (no filePath but has other content)`, 0);
+		await appendFileToNote(plugin, msg, distributionRule, filePath, error);
 	} else {
-		displayAndLog(
-			plugin,
-			`⚠️ SKIPPING appendFileToNote - no caption, no templateFilePath, and not in media group`,
-			0,
-		);
+		displayAndLog(plugin, `⚠️ SKIPPING appendFileToNote - no file and no content`, 0);
 	}
 
 	if (msg.media_group_id) {
@@ -927,7 +929,60 @@ async function appendFileToNote(
 		return;
 	}
 
-	const notePath = await applyNotePathTemplate(plugin, distributionRule.notePathTemplate, msg);
+	// Extract text from document for use in path generation
+	let extractedText: string | null = null;
+	if (!error && filePath) {
+		const contentType = getMessageContentType(msg);
+		if (contentType === "document") {
+			const fileName = filePath.split("/").pop() || "";
+			extractedText = await tryExtractDocumentText(plugin, filePath, fileName, msg.document?.mime_type);
+			if (extractedText) {
+				displayAndLog(plugin, `📄 Extracted text from ${fileName} for path generation`, 0);
+			}
+		} else if (contentType === "photo" && plugin.settings.aiEnabled && !msg.caption) {
+			// For images without caption, get AI description for better title generation
+			displayAndLog(plugin, `🖼️ Processing image without caption through AI Vision for title generation`, 0);
+			const fileContent = await applyNoteContentTemplate(plugin, distributionRule.templateFilePath, msg, []);
+			extractedText = await processWithAI(plugin, fileContent, contentType, msg);
+			if (extractedText) {
+				displayAndLog(plugin, `🖼️ Got AI description for image: ${extractedText.substring(0, 100)}...`, 0);
+			}
+		} else if (
+			(contentType === "voice" || contentType === "audio" || contentType === "video") &&
+			plugin.settings.aiEnabled
+		) {
+			// Transcribe audio/video/voice via Whisper
+			try {
+				const stats = await plugin.app.vault.adapter.stat(filePath);
+				if (stats && stats.size < 25 * 1024 * 1024) {
+					// 25MB limit for Whisper
+					displayAndLog(plugin, `🎤 Transcribing ${contentType} via Whisper API...`, 0);
+					const fileData = await plugin.app.vault.adapter.readBinary(filePath);
+					const { transcribeOpenAI } = await import("src/ai/openai");
+					const ext = filePath.split(".").pop() || "";
+
+					const transcript = await transcribeOpenAI(plugin, fileData, ext);
+					if (transcript) {
+						extractedText = transcript;
+						displayAndLog(plugin, `🎤 Transcription successful (${transcript.length} chars)`, 0);
+					}
+				} else {
+					displayAndLog(plugin, `⚠️ File too large for Whisper API (>25MB), skipping transcription`, 0);
+				}
+			} catch (e) {
+				console.error("Error reading/transcribing file:", e);
+				displayAndLog(plugin, `❌ Error transcribing file: ${e.message}`, 0);
+			}
+		}
+	}
+
+	const notePath = await applyNotePathTemplate(
+		plugin,
+		distributionRule.notePathTemplate,
+		msg,
+		false,
+		extractedText || undefined,
+	);
 
 	let noteFolderPath = path.dirname(notePath);
 	if (noteFolderPath != ".") createFolderIfNotExist(plugin.app.vault, noteFolderPath);
@@ -957,8 +1012,15 @@ async function appendFileToNote(
 
 	let noteContent = await createNoteContent(plugin, notePath, msg, distributionRule, [filePath], error);
 
-	// Apply categorization for files
-	const categorization = await applyCategorization(plugin, noteContent, msg, notePath, distributionRule);
+	// Apply categorization for files, passing extracted text for better AI title generation
+	const categorization = await applyCategorization(
+		plugin,
+		noteContent,
+		msg,
+		notePath,
+		distributionRule,
+		extractedText || undefined,
+	);
 
 	const finalNotePath = categorization.finalNotePath;
 	noteContent = categorization.finalContent;
