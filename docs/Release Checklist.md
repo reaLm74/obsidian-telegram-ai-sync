@@ -18,13 +18,23 @@ Checklist for releasing a new plugin version using the Release Please + develop/
 
 ## Release Steps
 
-### 1. Commit and push to develop
+### 1. Put changes into develop (feature branch + PR)
+
+Create a branch from `develop`, commit with [Conventional Commits](https://www.conventionalcommits.org/), then merge via PR into `develop`:
 
 ```bash
+git checkout develop
+git pull origin develop
+git checkout -b feat/your-feature-name
 git add .
 git commit -m "feat: brief feature description"
-git push origin develop
+git push origin feat/your-feature-name
 ```
+
+- In GitHub: **New Pull Request**: `feat/your-feature-name` → `develop`
+- Review and merge the PR into `develop`
+
+*(Solo or quick fixes: you can also commit directly to `develop` and push.)*
 
 ### 2. Open PR develop → main
 

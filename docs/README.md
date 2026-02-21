@@ -33,6 +33,7 @@ Welcome to the comprehensive documentation for Telegram AI Sync! This collection
 1. Review **[Message Format Examples](Message%20Format%20Examples.md)** for technical details
 2. Check **[Template Variables Reference](Template%20Variables%20Reference.md)** for API reference
 3. Explore **[Advanced Features Guide](Advanced%20Features%20Guide.md)** for integration options
+4. **[Release Checklist](Release%20Checklist.md)** — release checklist for new features
 
 ## 🎯 Feature Highlights
 
