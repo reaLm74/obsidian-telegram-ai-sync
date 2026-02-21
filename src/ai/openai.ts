@@ -209,21 +209,52 @@ export async function processWithOpenAI(
 				if (!response.ok) {
 					let errorMessage = `HTTP ${response.status}`;
 					let errorData: any = null;
+					let userFriendlyMessage = "";
 
 					try {
 						errorData = await response.json();
 						errorMessage = errorData.error?.message || errorData.error?.type || errorMessage;
+
+						// Check for specific error types
+						const errorType = errorData.error?.type || "";
+						const errorCode = errorData.error?.code || "";
+
+						// Quota exceeded (no money)
+						if (
+							errorType === "insufficient_quota" ||
+							errorCode === "insufficient_quota" ||
+							response.status === 429 ||
+							response.status === 402 ||
+							errorMessage.toLowerCase().includes("quota") ||
+							errorMessage.toLowerCase().includes("exceeded your current quota")
+						) {
+							userFriendlyMessage = "💳 Quota exceeded. Please top up balance at platform.openai.com";
+						}
+						// Invalid or blocked API key
+						else if (
+							errorType === "invalid_api_key" ||
+							errorType === "access_terminated" ||
+							errorCode === "invalid_api_key" ||
+							errorCode === "access_terminated" ||
+							response.status === 401 ||
+							errorMessage.toLowerCase().includes("invalid") ||
+							errorMessage.toLowerCase().includes("terminated")
+						) {
+							userFriendlyMessage = "🔑 API key is invalid or revoked";
+						}
 					} catch {
 						errorMessage = await response.text();
 					}
 
-					// Check if request should be retried
+					// Check if request should be retried (don't retry quota/auth errors)
 					if (attempt < maxAttempts && isRetryableError(errorData, response.status)) {
 						await exponentialDelay(attempt, baseDelay);
 						continue;
 					}
 
-					throw new Error(`OpenAI API error: ${errorMessage}`);
+					// Throw error with user-friendly message if available
+					const finalMessage = userFriendlyMessage || `OpenAI API error: ${errorMessage}`;
+					throw new Error(finalMessage);
 				}
 
 				const data: OpenAIResponse = await response.json();
@@ -290,16 +321,135 @@ export function getPromptForContentType(plugin: TelegramSyncPlugin, contentType:
 		case "text":
 			return plugin.settings.aiPromptText || "";
 		case "voice":
-			return plugin.settings.aiPromptVoice || "";
+		case "video":
+		case "audio":
+			// Use unified prompt for all audio/video content
+			return plugin.settings.aiPromptAudioVideo || "";
 		case "photo":
 			return plugin.settings.aiPromptPhoto || "";
-		case "video":
-			return plugin.settings.aiPromptVideo || "";
-		case "audio":
-			return plugin.settings.aiPromptAudio || "";
 		case "document":
 			return plugin.settings.aiPromptDocument || "";
 		default:
 			return "";
+	}
+}
+
+/**
+ * Transcribes audio/video file using OpenAI Whisper API
+ */
+export async function transcribeOpenAI(
+	plugin: TelegramSyncPlugin,
+	fileBuffer: ArrayBuffer,
+	fileExtension: string,
+): Promise<string | null> {
+	if (!plugin.settings.aiEnabled || !plugin.settings.openAIApiKey) return null;
+
+	try {
+		const formData = new FormData();
+		// OpenAI Whisper only supports specific extensions. Map common ones.
+		let ext = fileExtension.toLowerCase();
+		if (ext === "oga") ext = "mp3"; // OGA usually works as is, but mp3 is safer or ogg
+
+		// Whisper supports: mp3, mp4, mpeg, mpga, m4a, wav, and webm.
+		// Construct a filename that Whisper accepts
+		const filename = `audio.${ext}`;
+
+		formData.append("model", "whisper-1");
+		// Create a Blob from the buffer. MIME type is optional but good practice.
+		formData.append("file", new Blob([fileBuffer]), filename);
+
+		const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${plugin.settings.openAIApiKey}`,
+				// Content-Type header is explicitly NOT set here so browser/engine sets boundary
+			},
+			body: formData,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(`Whisper API error (${response.status}): ${errorText}`);
+		}
+
+		const data = await response.json();
+		return data.text || null;
+	} catch (error) {
+		console.error("Transcription error:", error);
+		await displayAndLogError(
+			plugin,
+			error instanceof Error ? error : new Error(String(error)),
+			"Transcription Failed",
+			"",
+			undefined,
+			0,
+		);
+		return null;
+	}
+}
+
+/**
+ * Tests OpenAI API key validity
+ */
+export async function testOpenAIApiKey(apiKey: string): Promise<{ success: boolean; message: string }> {
+	if (!apiKey || apiKey.trim().length === 0) {
+		return { success: false, message: "API key is empty" };
+	}
+
+	try {
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+		const response = await fetch("https://api.openai.com/v1/models", {
+			method: "GET",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+			},
+			signal: controller.signal,
+		});
+
+		clearTimeout(timeoutId);
+
+		if (response.ok) {
+			return { success: true, message: "✅ API key is valid" };
+		}
+
+		let errorMessage = `HTTP ${response.status}`;
+		try {
+			const errorData = await response.json();
+			const errorType = errorData.error?.type || "";
+			const errorCode = errorData.error?.code || "";
+
+			// Quota exceeded
+			if (
+				errorType === "insufficient_quota" ||
+				errorCode === "insufficient_quota" ||
+				response.status === 429 ||
+				response.status === 402
+			) {
+				return { success: false, message: "💳 Quota exceeded. Please top up balance at platform.openai.com" };
+			}
+			// Invalid or blocked API key
+			else if (
+				errorType === "invalid_api_key" ||
+				errorType === "access_terminated" ||
+				errorCode === "invalid_api_key" ||
+				errorCode === "access_terminated" ||
+				response.status === 401
+			) {
+				return { success: false, message: "🔑 API key is invalid or revoked" };
+			}
+
+			errorMessage = errorData.error?.message || errorType || errorMessage;
+		} catch {
+			// Ignore JSON parse errors
+		}
+
+		return { success: false, message: `❌ Error: ${errorMessage}` };
+	} catch (error) {
+		if (error.name === "AbortError") {
+			return { success: false, message: "⏱️ Request timed out" };
+		}
+		return { success: false, message: `❌ Error: ${error.message}` };
 	}
 }

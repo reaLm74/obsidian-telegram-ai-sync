@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from "obsidian";
+import { App, Modal, Notice, Setting } from "obsidian";
 import TelegramSyncPlugin from "src/main";
 
 export class AIProviderModal extends Modal {
@@ -88,6 +88,35 @@ export class AIProviderModal extends Modal {
 					});
 				text.inputEl.type = "password";
 				text.inputEl.style.width = "300px";
+			})
+			.addButton((button) => {
+				button
+					.setButtonText("Test Key")
+					.setTooltip("Test API key validity")
+					.onClick(async () => {
+						button.setDisabled(true);
+						button.setButtonText("Testing...");
+
+						const { testOpenAIApiKey } = await import("src/ai/openai");
+						const result = await testOpenAIApiKey(this.plugin.settings.openAIApiKey);
+
+						button.setButtonText(result.success ? "✓" : "✗");
+						button.setTooltip(result.message);
+
+						// Show notification
+						if (result.success) {
+							new Notice(result.message);
+						} else {
+							new Notice(result.message, 5000);
+						}
+
+						// Reset button after 3 seconds
+						setTimeout(() => {
+							button.setButtonText("Test Key");
+							button.setTooltip("Test API key validity");
+							button.setDisabled(false);
+						}, 3000);
+					});
 			});
 
 		new Setting(container)

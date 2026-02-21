@@ -91,6 +91,7 @@ export interface TelegramSyncSettings {
 	aiPromptVideo: string;
 	aiPromptAudio: string;
 	aiPromptDocument: string;
+	aiPromptAudioVideo: string;
 	aiPromptGeneral: string; // General prompt for note formatting
 	// Settings for enabling/disabling file type processing
 	aiProcessText: boolean;
@@ -161,6 +162,7 @@ export const DEFAULT_SETTINGS: TelegramSyncSettings = {
 	aiPromptVideo: "",
 	aiPromptAudio: "",
 	aiPromptDocument: "",
+	aiPromptAudioVideo: "",
 	aiPromptGeneral:
 		"Format the information as a beautiful note in Markdown format. Use headings, lists, and highlights for better readability.",
 	// By default, processing of all content types is enabled
