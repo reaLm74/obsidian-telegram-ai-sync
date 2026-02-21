@@ -55,7 +55,7 @@ jobs:
 
             - name: Get number of release PR
               if: ${{steps.release.outputs.pr}}
-              run: echo "RELEASE_PR=${{ fromJSON(steps.release.outputs.pr).number }}" >> $GITHUB_ENV
+              run: echo "RELEASE_PR=$((${{ github.event.number }} + 1))" >> $GITHUB_ENV
 
             - name: Merge release PR
               if: ${{steps.release.outputs.pr}}
