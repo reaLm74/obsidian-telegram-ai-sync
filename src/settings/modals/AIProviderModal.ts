@@ -1,6 +1,38 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import TelegramSyncPlugin from "src/main";
 
+/** Predefined OpenAI models for dropdown selection */
+const OPENAI_MODELS: Record<string, string> = {
+	"gpt-4o": "GPT-4o (flagship)",
+	"gpt-4o-mini": "GPT-4o Mini (recommended)",
+	"gpt-4o-nano": "GPT-4o Nano",
+	"gpt-4-turbo": "GPT-4 Turbo",
+	"gpt-4": "GPT-4",
+	"gpt-3.5-turbo": "GPT-3.5 Turbo",
+};
+
+/** Predefined Claude models for dropdown selection */
+const CLAUDE_MODELS: Record<string, string> = {
+	"claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
+	"claude-3-5-haiku-20241022": "Claude 3.5 Haiku",
+	"claude-3-opus-20240229": "Claude 3 Opus",
+	"claude-3-sonnet-20240229": "Claude 3 Sonnet",
+	"claude-3-haiku-20240307": "Claude 3 Haiku",
+};
+
+/** Predefined Gemini models for dropdown selection */
+const GEMINI_MODELS: Record<string, string> = {
+	"gemini-2.5-pro": "Gemini 2.5 Pro",
+	"gemini-2.5-flash": "Gemini 2.5 Flash",
+	"gemini-2.5-flash-lite": "Gemini 2.5 Flash Lite",
+	"gemini-2.0-flash": "Gemini 2.0 Flash",
+	"gemini-1.5-pro": "Gemini 1.5 Pro",
+	"gemini-1.5-flash": "Gemini 1.5 Flash",
+	"gemini-1.5-flash-8b": "Gemini 1.5 Flash 8B",
+};
+
+const CUSTOM_MODEL_VALUE = "__custom__";
+
 export class AIProviderModal extends Modal {
 	private plugin: TelegramSyncPlugin;
 	private onUpdate: () => void;
@@ -119,18 +151,19 @@ export class AIProviderModal extends Modal {
 					});
 			});
 
-		new Setting(container)
-			.setName("Model")
-			.setDesc("OpenAI model to use (e.g., gpt-4o, gpt-4o-mini)")
-			.addText((text) => {
-				text.setPlaceholder("gpt-4o-mini")
-					.setValue(this.plugin.settings.openAIModel)
-					.onChange(async (value) => {
-						this.plugin.settings.openAIModel = value.trim();
-						await this.plugin.saveSettings();
-						this.onUpdate();
-					});
-			});
+		this.addModelDropdown(
+			container,
+			"Model",
+			"OpenAI model to use",
+			OPENAI_MODELS,
+			this.plugin.settings.openAIModel || "gpt-4o-mini",
+			async (value) => {
+				this.plugin.settings.openAIModel = value;
+				await this.plugin.saveSettings();
+				this.onUpdate();
+			},
+			"openai",
+		);
 
 		new Setting(container)
 			.setName("Enable Vision API")
@@ -189,20 +222,19 @@ export class AIProviderModal extends Modal {
 				text.inputEl.style.width = "300px";
 			});
 
-		new Setting(container)
-			.setName("Claude Model")
-			.setDesc(
-				"Claude model to use (e.g., claude-3-5-sonnet-20241022, claude-3-5-haiku-20241022, claude-3-opus-20240229)",
-			)
-			.addText((text) => {
-				text.setPlaceholder("claude-3-5-sonnet-20241022")
-					.setValue(this.plugin.settings.claudeModel || "claude-3-5-sonnet-20241022")
-					.onChange(async (value) => {
-						this.plugin.settings.claudeModel = value.trim();
-						await this.plugin.saveSettings();
-						this.onUpdate();
-					});
-			});
+		this.addModelDropdown(
+			container,
+			"Claude Model",
+			"Claude model to use",
+			CLAUDE_MODELS,
+			this.plugin.settings.claudeModel || "claude-3-5-sonnet-20241022",
+			async (value) => {
+				this.plugin.settings.claudeModel = value;
+				await this.plugin.saveSettings();
+				this.onUpdate();
+			},
+			"claude",
+		);
 
 		new Setting(container)
 			.setName("Temperature")
@@ -250,20 +282,19 @@ export class AIProviderModal extends Modal {
 				text.inputEl.style.width = "300px";
 			});
 
-		new Setting(container)
-			.setName("Gemini Model")
-			.setDesc(
-				"Gemini model to use for both text and images (e.g., gemini-1.5-pro, gemini-1.5-flash, gemini-2.0-flash-exp)",
-			)
-			.addText((text) => {
-				text.setPlaceholder("gemini-1.5-pro")
-					.setValue(this.plugin.settings.geminiModel || "gemini-1.5-pro")
-					.onChange(async (value) => {
-						this.plugin.settings.geminiModel = value.trim();
-						await this.plugin.saveSettings();
-						this.onUpdate();
-					});
-			});
+		this.addModelDropdown(
+			container,
+			"Gemini Model",
+			"Gemini model to use for both text and images",
+			GEMINI_MODELS,
+			this.plugin.settings.geminiModel || "gemini-1.5-pro",
+			async (value) => {
+				this.plugin.settings.geminiModel = value;
+				await this.plugin.saveSettings();
+				this.onUpdate();
+			},
+			"gemini",
+		);
 
 		new Setting(container)
 			.setName("Enable Gemini Vision")
@@ -304,6 +335,53 @@ export class AIProviderModal extends Modal {
 						this.onUpdate();
 					});
 			});
+	}
+
+	private addModelDropdown(
+		container: HTMLElement,
+		name: string,
+		desc: string,
+		predefinedModels: Record<string, string>,
+		currentValue: string,
+		onChange: (value: string) => Promise<void>,
+		providerKey: "openai" | "claude" | "gemini",
+	) {
+		const isPredefined = Object.keys(predefinedModels).includes(currentValue);
+		const dropdownValue = isPredefined ? currentValue : CUSTOM_MODEL_VALUE;
+
+		const modelSetting = new Setting(container).setName(name).setDesc(desc);
+
+		modelSetting.addDropdown((dropdown) => {
+			for (const [id, label] of Object.entries(predefinedModels)) {
+				dropdown.addOption(id, label);
+			}
+			dropdown.addOption(CUSTOM_MODEL_VALUE, "Other (custom)");
+			dropdown.setValue(dropdownValue);
+			dropdown.onChange(async (value) => {
+				const modelValue = value === CUSTOM_MODEL_VALUE ? (currentValue && !isPredefined ? currentValue : "") : value;
+				await onChange(modelValue);
+				if (value === CUSTOM_MODEL_VALUE) {
+					this.renderProviderSettings();
+				}
+			});
+		});
+
+		if (!isPredefined) {
+			modelSetting.addText((text) => {
+				text.setPlaceholder("Enter model ID")
+					.setValue(currentValue)
+					.onChange(async (value) => {
+						const modelId = value.trim();
+						const settings = this.plugin.settings;
+						if (providerKey === "openai") settings.openAIModel = modelId;
+						else if (providerKey === "claude") settings.claudeModel = modelId;
+						else if (providerKey === "gemini") settings.geminiModel = modelId;
+						await this.plugin.saveSettings();
+						this.onUpdate();
+					});
+				text.inputEl.style.width = "200px";
+			});
+		}
 	}
 
 	private addAdvancedSettings(container: HTMLElement) {
