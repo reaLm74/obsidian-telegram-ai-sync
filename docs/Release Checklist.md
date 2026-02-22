@@ -38,6 +38,11 @@ git push origin feat/your-feature-name
 
 ### 2. Open PR develop → main
 
+When you open PR develop → main, be sure to wait for the Update version of plugin to complete.
+GitHub Action should have time to update the version and launch the manifest.json back to develop.
+If you immediately click Merge, the old version of the plugin and release will 
+get into the main.yml will compile an archive with the old version in manifest.json.
+
 - In GitHub: New Pull Request: `develop` → `main`
 - **Release Please** will automatically create a PR with version update (CHANGELOG + package.json)
 
@@ -53,6 +58,11 @@ git push origin feat/your-feature-name
 - Merge into `develop`
 
 ### 5. Merge develop → main
+
+When you open PR develop → main, be sure to wait for the Update version of plugin to complete.
+GitHub Action should have time to update the version and launch the manifest.json back to develop.
+If you immediately click Merge, the old version of the plugin and release will 
+get into the main.yml will compile an archive with the old version in manifest.json.
 
 - Merge the main PR `develop` → `main`
 - **Release workflow** will automatically:

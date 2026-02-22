@@ -59,7 +59,7 @@ jobs:
 
             - name: Merge release PR
               if: ${{steps.release.outputs.pr}}
-              uses: pascalgn/automerge-action@v0.15.6
+              uses: pascalgn/automerge-action@v0.16.4
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   MERGE_REMOVE_LABELS: automerge
